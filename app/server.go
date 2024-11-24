@@ -1,11 +1,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"log"
 
@@ -22,11 +24,17 @@ var kv *KVStore
 
 type KVStore struct {
 	mu    sync.Mutex
-	store map[string]string
+	store map[string]*Value
+}
+
+type Value struct {
+	val          string
+	ttl          int
+	created_time time.Time
 }
 
 func NewKvStore() *KVStore {
-	return &KVStore{store: map[string]string{}}
+	return &KVStore{store: map[string]*Value{}}
 }
 func init() {
 	kv = NewKvStore()
@@ -115,7 +123,12 @@ func parseIp(ip string, conn net.Conn) {
 		} else if array[2] == "SET" {
 			//ip://"*3 \r\n $3 \r\n SET \r\n $6 \r\n orange \r\n $5 \r\n apple \r\n
 			//op://+OK\r\n
-			store(array[4], array[6])
+			var ttl int
+			if noOfElememts == 5 && array[8] == "px" {
+				ttl, _ = strconv.Atoi(array[10])
+
+			}
+			store(array[4], array[6], ttl)
 			log.Printf("received key %s val %s \n", array[4], array[6])
 			conn.Write([]byte("+OK\r\n"))
 		} else if array[2] == "GET" {
@@ -133,10 +146,14 @@ func parseIp(ip string, conn net.Conn) {
 	}
 }
 
-func store(key string, val string) error {
+func store(key string, val string, ttl int) error {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
-	kv.store[key] = val
+	if ttl == 0 {
+		kv.store[key] = &Value{val: val}
+		return nil
+	}
+	kv.store[key] = &Value{val: val, ttl: ttl, created_time: time.Now()}
 	log.Println("stored succesfully")
 	return nil
 }
@@ -144,8 +161,17 @@ func store(key string, val string) error {
 func get(key string) (string, error) {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
-	if kv.store[key] != "" {
-		return kv.store[key], nil
+	if kv.store[key] != nil {
+		val := kv.store[key]
+		if val.created_time.IsZero() {
+			return val.val, nil
+		}
+		createdTime := val.created_time
+		ttl := val.ttl
+		if time.Since(createdTime).Milliseconds() >= int64(time.Duration(ttl)*time.Millisecond) {
+			
+			return "", errors.New("key expired")
+		}
 	}
 	return "", fmt.Errorf("key not found in kv store")
 }
