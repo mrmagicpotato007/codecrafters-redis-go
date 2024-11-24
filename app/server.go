@@ -2,50 +2,108 @@ package main
 
 import (
 	"fmt"
+
+	"log"
+
 	"net"
+
 	"os"
-	"os/signal"
+
+	"strconv"
+
+	"strings"
 )
 
-func listen(conn net.Conn) {
-	fmt.Println("waiting to read")
-	buff := make([]byte, 128)
-	_, err := conn.Read(buff)
-	if err != nil {
-		fmt.Println("Error while reading from the connection: ", err.Error())
-		os.Exit(1)
-	}
-	conn.Write([]byte("+PONG\r\n"))
-	if err != nil {
-		fmt.Println("Error while writing to the connection: ", err.Error())
-	}
-	fmt.Println("Done Reading")
-}
 func main() {
-	// You can use print statements as follows for debugging, they'll be visible when running tests.
-	fmt.Println("Logs from your program will appear here!")
-	exit := make(chan os.Signal, 1)
-	signal.Notify(exit, os.Interrupt)
-	// Uncomment this block to pass the first stage
 
-	listener, err := net.Listen("tcp", "0.0.0.0:6379")
+	l, err := net.Listen("tcp", "127.0.0.1:6379")
+
 	if err != nil {
+
 		fmt.Println("Failed to bind to port 6379")
+
 		os.Exit(1)
+
 	}
-	fmt.Println("waiting for connection")
-	conn, err := listener.Accept()
-	fmt.Println("accepted connection")
-	if err != nil {
-		fmt.Println("Error accepting connection: ", err.Error())
-		os.Exit(1)
-	}
-	fmt.Println("accepted connection")
-	defer conn.Close()
-	go func(conn net.Conn){
-		for{
-			listen(conn)
+
+	defer l.Close()
+
+	for {
+
+		conn, err := l.Accept()
+
+		if err != nil {
+
+			fmt.Println("Error accepting connection: ", err.Error())
+
+			os.Exit(1)
+
 		}
-	}(conn)
-	<-exit
+
+		go handleRequest(conn)
+
+	}
+
+}
+
+func handleRequest(conn net.Conn) {
+
+	buff := make([]byte, 1024)
+
+	length, err := conn.Read(buff)
+
+	if err != nil {
+
+		fmt.Printf("Error reading: %#v\n", err)
+
+		return
+
+	}
+
+	rawData := string(buff[:length])
+	log.Println("raw data", rawData)
+	lines := strings.Split(rawData, "\n")
+
+	// if the received data is a array
+
+	if len(lines) > 0 && strings.HasPrefix(lines[0], "*") {
+
+		elements := []string{}
+
+		for i := 1; i < len(lines); i++ {
+
+			if strings.HasPrefix(lines[i], "$") {
+
+				elementLength, err := strconv.Atoi(strings.Trim(lines[i][1:], "\r"))
+
+				if err != nil {
+
+					log.Println("Error parsing element length:", err)
+
+					return
+
+				}
+
+				if i+1 < len(lines) && len(strings.Trim(lines[i+1], "\r")) == elementLength {
+
+					elements = append(elements, strings.Trim(lines[i+1], "\r"))
+
+					i++ // Skip the next line as it is part of the current element
+
+				}
+
+			}
+
+		}
+
+		if len(elements) == 1 && elements[0] == "PING" {
+
+			conn.Write([]byte("+PONG\r\n"))
+
+			return
+
+		}
+
+	}
+
 }
