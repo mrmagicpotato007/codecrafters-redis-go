@@ -90,8 +90,7 @@ func handleRequest(conn net.Conn) {
 			return
 
 		}
-		data := strings.ReplaceAll(string(buff), "\n", `\n`)
-		log.Println("raw data", data)
+		//log.Println("raw data", string(buff))
 		parseIp(string(buff), conn)
 	}
 
@@ -153,6 +152,7 @@ func store(key string, val string, ttl int) error {
 		kv.store[key] = &Value{val: val}
 		return nil
 	}
+	log.Printf("got ttl of %d", ttl)
 	kv.store[key] = &Value{val: val, ttl: ttl, created_time: time.Now()}
 	log.Println("stored succesfully")
 	return nil
@@ -168,10 +168,12 @@ func get(key string) (string, error) {
 		}
 		createdTime := val.created_time
 		ttl := val.ttl
-		if time.Since(createdTime).Milliseconds() >= int64(time.Duration(ttl)*time.Millisecond) {
-			
+		elapsedTime := time.Now().UnixMilli() - createdTime.UnixMilli()
+		log.Printf("time elapsed %d duration %d", elapsedTime, int64(time.Duration(ttl)))
+		if elapsedTime >= int64(time.Duration(ttl)) {
 			return "", errors.New("key expired")
 		}
+		return val.val, nil
 	}
 	return "", fmt.Errorf("key not found in kv store")
 }
