@@ -46,18 +46,19 @@ func handleRequest(conn net.Conn) {
 
 	buff := make([]byte, 1024)
 
-	length, err := conn.Read(buff)
+	for {
+		_, err := conn.Read(buff)
 
-	if err != nil {
+		if err != nil {
 
-		fmt.Printf("Error reading: %#v\n", err)
+			fmt.Printf("Error reading: %#v\n", err)
 
-		return
+			return
 
+		}
+
+		log.Println("raw data", string(buff))
+		conn.Write([]byte("+PONG\r\n"))
 	}
-
-	rawData := string(buff[:length])
-	log.Println("raw data", rawData)
-	conn.Write([]byte("+PONG\r\n+PONG\r\n"))
 
 }
