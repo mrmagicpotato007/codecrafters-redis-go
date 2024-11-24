@@ -58,6 +58,6 @@ func handleRequest(conn net.Conn) {
 
 	rawData := string(buff[:length])
 	log.Println("raw data", rawData)
-	conn.Write([]byte("PONG\r\n+PONG\r\n"))
+	conn.Write([]byte("+PONG\r\n+PONG\r\n"))
 
 }
