@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"strconv"
@@ -14,13 +15,13 @@ import (
 	"net"
 
 	"os"
-)
 
-const (
-	CLRF = "\r\n"
+	"github.com/codecrafters-io/redis-starter-go/utils"
 )
 
 var kv *KVStore
+var rdbDir = flag.String("dir", "", "directory of RDB file")
+var rdbFile = flag.String("dbfilename", "", "RDB file name")
 
 type KVStore struct {
 	mu    sync.Mutex
@@ -38,6 +39,7 @@ func NewKvStore() *KVStore {
 }
 func init() {
 	kv = NewKvStore()
+	flag.Parse()
 }
 
 func main() {
@@ -108,7 +110,7 @@ func parseIp(ip string, conn net.Conn) {
 	//we recieved array
 
 	case '*':
-		array := strings.Split(ip, CLRF)
+		array := strings.Split(ip, utils.CLRF)
 
 		noOfElememts, err := strconv.Atoi(string(array[0][1]))
 		log.Println("no of elements", noOfElememts)
@@ -118,7 +120,7 @@ func parseIp(ip string, conn net.Conn) {
 		if array[2] == "ECHO" {
 			//ip://*2 \r\n $4 \r\n ECHO \r\n $3 \r\n hey \r\n
 			//op://$3\r\nhey\r\n
-			conn.Write([]byte(array[3] + CLRF + array[4] + CLRF))
+			conn.Write([]byte(utils.GetBulkString(array[4])))
 		} else if array[2] == "SET" {
 			//ip://"*3 \r\n $3 \r\n SET \r\n $6 \r\n orange \r\n $5 \r\n apple \r\n
 			//op://+OK\r\n
@@ -137,12 +139,26 @@ func parseIp(ip string, conn net.Conn) {
 				conn.Write([]byte("$-1\r\n"))
 				return
 			}
-			conn.Write([]byte("$" + strconv.Itoa(len(val)) + CLRF + val + CLRF))
+			conn.Write([]byte(utils.GetBulkString(val)))
 
+		} else if array[2] == "CONFIG" {
+
+			op := handleConfig(array)
+			conn.Write([]byte(op))
 		} else {
 			conn.Write([]byte("+PONG\r\n"))
 		}
 	}
+}
+
+// *3 \r\n $6 \r\n CONFIG \r\n $3 \r\n GET \r\n $3 \r\n dir \r\n
+func handleConfig(ipStrings []string) string {
+	if ipStrings[6] == "dir" {
+		return utils.GetArray([]string{"dir", *rdbDir})
+	} else if ipStrings[6] == "dbfilename" {
+		return utils.GetArray([]string{"dbfilename", *rdbFile})
+	}
+	return ""
 }
 
 func store(key string, val string, ttl int) error {
